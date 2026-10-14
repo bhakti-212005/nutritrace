@@ -3,7 +3,7 @@ import { FoodValidator } from "../strategies/FoodValidator";
 import { CosmeticsValidator } from "../strategies/CosmeticsValidator";
 import { ComplianceService } from "../services/ComplianceService";
 
-describe("STRATEGY PATTERN: Regulatory Compliance Validators", () => {
+describe("STRATEGY PATTERN: Declarative Regulatory Compliance Validators", () => {
   const foodValidator = new FoodValidator();
   const cosmeticsValidator = new CosmeticsValidator();
   const complianceService = new ComplianceService();
@@ -16,6 +16,8 @@ describe("STRATEGY PATTERN: Regulatory Compliance Validators", () => {
     expect(euReport).toBeDefined();
     expect(euReport?.status).toBe("NON_COMPLIANT");
     expect(euReport?.violations.some(v => v.substance.includes("Titanium Dioxide"))).toBe(true);
+    expect(euReport?.violations[0].classification).toBe("CONFIGURED_VIOLATION");
+    expect(euReport?.violations[0].suggestedSubstitute).toBeDefined();
   });
 
   it("FoodValidator: Flags Red 40 for required behavioral warning in EU", () => {
@@ -25,14 +27,32 @@ describe("STRATEGY PATTERN: Regulatory Compliance Validators", () => {
     const euReport = reports.find(r => r.region === "EU_EFSA");
     expect(euReport?.status).toBe("WARNING");
     expect(euReport?.violations.some(v => v.status === "WARNING_REQUIRED")).toBe(true);
+    expect(euReport?.violations[0].classification).toBe("STATUTORY_WARNING");
   });
 
-  it("CosmeticsValidator: Banned Parabens in EU leave-on cosmetics", () => {
+  it("FoodValidator: Flags Potassium Bromate for concentration verification in US FDA", () => {
+    const ingredients = ["Wheat flour", "Potassium bromate", "Yeast", "Water"];
+    const reports = foodValidator.validate(ingredients);
+
+    const fdaReport = reports.find(r => r.region === "US_FDA");
+    expect(fdaReport?.status).toBe("NEEDS_REVIEW");
+    expect(fdaReport?.violations.some(v => v.requiresHumanReview)).toBe(true);
+  });
+
+  it("CosmeticsValidator: Identifies prohibited parabens in EU cosmetics", () => {
     const ingredients = ["Water", "Glycerin", "Propylparaben", "Niacinamide"];
     const reports = cosmeticsValidator.validate(ingredients);
 
     const euReport = reports.find(r => r.region === "EU_EFSA");
     expect(euReport?.status).toBe("NON_COMPLIANT");
+  });
+
+  it("ComplianceService: Selects correct strategy dynamically based on category", () => {
+    const foodStrat = complianceService.getStrategy("Food");
+    const cosmeticsStrat = complianceService.getStrategy("Cosmetics");
+
+    expect(foodStrat.strategyName).toContain("Food");
+    expect(cosmeticsStrat.strategyName).toContain("Cosmetics");
   });
 
   it("ComplianceService: Accurately identifies allergens and prevents false positives", () => {

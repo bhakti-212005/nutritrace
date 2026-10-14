@@ -1,9 +1,13 @@
 export type AppEventType = 
   | "PRODUCT_CREATED" 
   | "PRODUCT_UPDATED" 
-  | "INCIDENT_TRIAGED" 
+  | "INCIDENT_TRIAGED"
+  | "INCIDENT_RECURRENCE_RECORDED"
+  | "BATCH_HOLD_APPLIED"
+  | "BATCH_HOLD_RELEASED"
   | "BATCH_QUARANTINED"
-  | "COMPLIANCE_FLAGGED";
+  | "COMPLIANCE_FLAGGED"
+  | "AUDIT_LOGGED";
 
 export interface AppEvent<T = any> {
   id: string;
@@ -16,7 +20,7 @@ type Listener<T = any> = (event: AppEvent<T>) => void;
 
 /**
  * OBSERVER PATTERN: EventBus
- * Decoupled event-driven architecture for notifications, safety alerts, and batch quarantines.
+ * Decoupled event-driven architecture for notifications, safety alerts, and batch safety holds.
  */
 export class EventBus {
   private listeners: Map<AppEventType, Listener[]> = new Map();
@@ -38,16 +42,16 @@ export class EventBus {
 
   publish<T = any>(type: AppEventType, payload: T): AppEvent<T> {
     const event: AppEvent<T> = {
-      id: `EVT-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: `EVT-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       type,
       payload,
       timestamp: new Date().toISOString()
     };
 
     this.history.unshift(event);
-    if (this.history.length > 50) this.history.pop();
+    if (this.history.length > 100) this.history.pop();
 
-    const targets = this.listeners.get(type) || [];
+    const targets = [...(this.listeners.get(type) || [])];
     targets.forEach(listener => {
       try {
         listener(event);
@@ -61,6 +65,14 @@ export class EventBus {
 
   getHistory(): AppEvent[] {
     return [...this.history];
+  }
+
+  clearHistory(): void {
+    this.history = [];
+  }
+
+  clearListeners(): void {
+    this.listeners.clear();
   }
 }
 

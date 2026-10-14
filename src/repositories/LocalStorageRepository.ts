@@ -1,5 +1,6 @@
 import { Product } from "../domain/product";
 import { Incident } from "../domain/incident";
+import { AuditRecord } from "../domain/audit";
 
 const INITIAL_PRODUCTS: Product[] = [
   {
@@ -116,25 +117,66 @@ const INITIAL_INCIDENTS: Incident[] = [
     id: "INC-INIT-001",
     productId: "prod-003",
     batchNumber: "BATCH-2026-319",
-    title: "EU Import Regulatory Hold (Red 40 Warning)",
-    description: "Port authority customs requested secondary inspection for Red 40 color additive child hyperactivity label.",
+    category: "PACKAGING_LABEL_MISMATCH",
+    title: "EU Import Regulatory Hold (Red 40 Warning Label Verification)",
+    description: "Customs authorities requested packaging verification regarding mandatory statutory warning label for Red 40 coloring.",
     reportedBy: "EU Customs Broker",
     priority: "HIGH",
     status: "INVESTIGATING",
-    autoAction: "AUTO_ESCALATE_BILLING_ALERT",
-    reasoning: ["EU Regulation (EC) No 1333/2008 requires statutory warning label for Red 40."],
-    createdAt: new Date(Date.now() - 3600000 * 6).toISOString()
+    autoAction: "FLAG_FOR_PACKAGING_QA_INSPECTION",
+    reasoning: [
+      "Regulation (EC) No 1333/2008 Annex V requires statutory warning label for Red 40.",
+      "Assigned HIGH priority for packaging compliance review prior to distribution clearance."
+    ],
+    occurrenceCount: 1,
+    reportsHistory: [
+      {
+        reportId: "REP-INIT-001",
+        timestamp: "2026-10-14T08:15:00.000Z",
+        description: "Customs authorities requested packaging verification regarding mandatory statutory warning label for Red 40 coloring.",
+        reportedBy: "EU Customs Broker"
+      }
+    ],
+    createdAt: "2026-10-14T08:15:00.000Z",
+    updatedAt: "2026-10-14T08:15:00.000Z"
+  }
+];
+
+const INITIAL_AUDIT_RECORDS: AuditRecord[] = [
+  {
+    id: "AUD-INIT-001",
+    timestamp: "2026-10-14T08:15:00.000Z",
+    eventType: "INCIDENT_LOGGED",
+    entityType: "INCIDENT",
+    entityId: "INC-INIT-001",
+    batchNumber: "BATCH-2026-319",
+    action: "FLAG_FOR_PACKAGING_QA_INSPECTION",
+    reason: "Mandatory EU Red 40 packaging warning compliance verification.",
+    actor: "IncidentAgent-v2 (Automated Rule Triage)"
+  },
+  {
+    id: "AUD-INIT-002",
+    timestamp: "2026-10-13T08:45:00.000Z",
+    eventType: "PRODUCT_CREATED",
+    entityType: "PRODUCT",
+    entityId: "prod-004",
+    batchNumber: "BATCH-2026-904",
+    action: "CREATED_INITIAL_FORMULATION",
+    reason: "Canonical master record pre-seeded.",
+    actor: "PIM System Administrator"
   }
 ];
 
 /**
  * REPOSITORY PATTERN: LocalStorageRepository
- * Abstracts data persistence with automatic seeding and synchronization.
+ * Abstracts data persistence with automatic seeding, error recovery, and synchronization.
  */
 export class LocalStorageRepository {
   private readonly PRODUCTS_KEY = "nutritrace_products_v1";
   private readonly INCIDENTS_KEY = "nutritrace_incidents_v1";
+  private readonly AUDIT_KEY = "nutritrace_audit_v1";
 
+  // --- PRODUCTS ---
   getProducts(): Product[] {
     try {
       const data = localStorage.getItem(this.PRODUCTS_KEY);
@@ -142,8 +184,11 @@ export class LocalStorageRepository {
         this.saveProducts(INITIAL_PRODUCTS);
         return INITIAL_PRODUCTS;
       }
-      return JSON.parse(data);
-    } catch {
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) throw new Error("Products payload is not an array");
+      return parsed;
+    } catch (e) {
+      console.warn("[LocalStorageRepository] Corrupted or missing products data, using initial seed.", e);
       return INITIAL_PRODUCTS;
     }
   }
@@ -152,7 +197,7 @@ export class LocalStorageRepository {
     try {
       localStorage.setItem(this.PRODUCTS_KEY, JSON.stringify(products));
     } catch (e) {
-      console.error("Failed to save products to LocalStorage", e);
+      console.error("[LocalStorageRepository] Failed to save products to LocalStorage", e);
     }
   }
 
@@ -170,10 +215,11 @@ export class LocalStorageRepository {
 
   updateProductBatchStatus(batchNumber: string, status: Product["status"]): void {
     const list = this.getProducts();
-    const updated = list.map(p => p.batchNumber === batchNumber ? { ...p, status } : p);
+    const updated = list.map(p => p.batchNumber === batchNumber ? { ...p, status, updatedAt: new Date().toISOString() } : p);
     this.saveProducts(updated);
   }
 
+  // --- INCIDENTS ---
   getIncidents(): Incident[] {
     try {
       const data = localStorage.getItem(this.INCIDENTS_KEY);
@@ -181,8 +227,11 @@ export class LocalStorageRepository {
         this.saveIncidents(INITIAL_INCIDENTS);
         return INITIAL_INCIDENTS;
       }
-      return JSON.parse(data);
-    } catch {
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) throw new Error("Incidents payload is not an array");
+      return parsed;
+    } catch (e) {
+      console.warn("[LocalStorageRepository] Corrupted or missing incidents data, using initial seed.", e);
       return INITIAL_INCIDENTS;
     }
   }
@@ -191,15 +240,62 @@ export class LocalStorageRepository {
     try {
       localStorage.setItem(this.INCIDENTS_KEY, JSON.stringify(incidents));
     } catch (e) {
-      console.error("Failed to save incidents to LocalStorage", e);
+      console.error("[LocalStorageRepository] Failed to save incidents to LocalStorage", e);
     }
   }
 
-  addIncident(incident: Incident): Incident {
+  saveIncident(incident: Incident): Incident {
     const list = this.getIncidents();
-    list.unshift(incident);
+    const index = list.findIndex(i => i.id === incident.id);
+    if (index >= 0) {
+      list[index] = incident;
+    } else {
+      list.unshift(incident);
+    }
     this.saveIncidents(list);
     return incident;
+  }
+
+  // --- AUDIT TRAIL ---
+  getAuditRecords(): AuditRecord[] {
+    try {
+      const data = localStorage.getItem(this.AUDIT_KEY);
+      if (!data) {
+        this.saveAuditRecords(INITIAL_AUDIT_RECORDS);
+        return INITIAL_AUDIT_RECORDS;
+      }
+      const parsed = JSON.parse(data);
+      if (!Array.isArray(parsed)) throw new Error("Audit records payload is not an array");
+      return parsed;
+    } catch (e) {
+      console.warn("[LocalStorageRepository] Corrupted or missing audit data, using initial seed.", e);
+      return INITIAL_AUDIT_RECORDS;
+    }
+  }
+
+  saveAuditRecords(records: AuditRecord[]): void {
+    try {
+      localStorage.setItem(this.AUDIT_KEY, JSON.stringify(records));
+    } catch (e) {
+      console.error("[LocalStorageRepository] Failed to save audit records", e);
+    }
+  }
+
+  addAuditRecord(record: AuditRecord): AuditRecord {
+    const list = this.getAuditRecords();
+    list.unshift(record);
+    if (list.length > 200) list.pop(); // keep latest 200
+    this.saveAuditRecords(list);
+    return record;
+  }
+
+  // Helper for tests/resets
+  clearAll(): void {
+    try {
+      localStorage.removeItem(this.PRODUCTS_KEY);
+      localStorage.removeItem(this.INCIDENTS_KEY);
+      localStorage.removeItem(this.AUDIT_KEY);
+    } catch {}
   }
 }
 

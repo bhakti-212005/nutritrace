@@ -1,5 +1,5 @@
 export type ProductCategory = "Food" | "Beverage" | "Cosmetics" | "Supplement";
-export type ProductStatus = "APPROVED" | "REVIEW_REQUIRED" | "QUARANTINED";
+export type ProductStatus = "APPROVED" | "REVIEW_REQUIRED" | "PROVISIONAL_HOLD" | "QUARANTINED";
 
 export interface NutritionInfo {
   servingSize: string;

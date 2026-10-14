@@ -2,7 +2,7 @@ import { ComplianceStrategy } from "../strategies/ComplianceStrategy";
 import { FoodValidator } from "../strategies/FoodValidator";
 import { CosmeticsValidator } from "../strategies/CosmeticsValidator";
 import { ProductCategory, AllergenTag } from "../domain/product";
-import { ProductComplianceResult, RegionalAuditReport, RegulatoryRegion } from "../domain/compliance";
+import { ProductComplianceResult, RegionalAuditReport, RegulatoryRegion, ComplianceViolation } from "../domain/compliance";
 
 const ALLERGEN_RULES: { id: string; name: string; icon: string; keywords: string[] }[] = [
   { id: "milk", name: "Milk / Dairy", icon: "🥛", keywords: ["milk", "dairy", "whey", "casein", "butter", "cheese"] },
@@ -33,10 +33,14 @@ export class ComplianceService {
 
     const reports = {} as Record<RegulatoryRegion, RegionalAuditReport>;
     let totalScore = 0;
+    let anyNeedsReview = false;
 
     for (const rep of reportsList) {
       reports[rep.region] = rep;
       totalScore += rep.score;
+      if (rep.status === "NEEDS_REVIEW" || rep.violations.some(v => v.requiresHumanReview)) {
+        anyNeedsReview = true;
+      }
     }
 
     const averageScore = Math.round(totalScore / reportsList.length);
@@ -45,8 +49,25 @@ export class ComplianceService {
     return {
       averageScore,
       isGloballyCompliant,
+      requiresHumanReview: anyNeedsReview,
       reports
     };
+  }
+
+  getViolationsList(result: ProductComplianceResult): ComplianceViolation[] {
+    const list: ComplianceViolation[] = [];
+    const seen = new Set<string>();
+
+    Object.values(result.reports).forEach(rep => {
+      rep.violations.forEach(v => {
+        if (!seen.has(v.ruleId)) {
+          seen.add(v.ruleId);
+          list.push(v);
+        }
+      });
+    });
+
+    return list;
   }
 
   extractAllergens(ingredients: string[]): AllergenTag[] {

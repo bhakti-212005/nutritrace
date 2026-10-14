@@ -1,69 +1,74 @@
 import { ComplianceStrategy } from "./ComplianceStrategy";
-import { RegionalAuditReport, ComplianceViolation } from "../domain/compliance";
+import { RegionalAuditReport, ComplianceViolation, RegulatoryRegion } from "../domain/compliance";
+import { COMPLIANCE_RULES } from "./complianceRules";
 
 export class CosmeticsValidator implements ComplianceStrategy {
   readonly strategyName = "Cosmetics & Skincare Regulatory Validator";
 
   validate(ingredients: string[]): RegionalAuditReport[] {
     const lower = ingredients.map(i => i.toLowerCase().trim());
+    const textJoined = lower.join(" ");
 
-    const euViolations: ComplianceViolation[] = [];
-    let euScore = 100;
-
-    if (lower.some(i => i.includes("propylparaben") || i.includes("butylparaben"))) {
-      euViolations.push({
-        substance: "Propylparaben / Butylparaben",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "Banned in leave-on cosmetic products intended for children under EU Reg 358/2014."
-      });
-      euScore -= 50;
-    }
-
-    if (lower.some(i => i.includes("formaldehyde") || i.includes("dmdm hydantoin"))) {
-      euViolations.push({
-        substance: "Formaldehyde / Formaldehyde Releasers",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "Annex II prohibited substance under EU Cosmetic Regulation 1223/2009."
-      });
-      euScore -= 60;
-    }
-
-    const fdaViolations: ComplianceViolation[] = [];
-    let fdaScore = 100;
-    if (lower.some(i => i.includes("propylparaben"))) {
-      fdaViolations.push({
-        substance: "Propylparaben",
-        severity: "MODERATE",
-        status: "RESTRICTED",
-        message: "CIR (Cosmetic Ingredient Review) safe concentration threshold < 0.8%."
-      });
-      fdaScore -= 15;
-    }
-
-    return [
-      {
-        region: "US_FDA",
-        regionName: "United States (FDA Cosmetics)",
-        status: fdaViolations.some(v => v.severity === "CRITICAL") ? "NON_COMPLIANT" : fdaViolations.length ? "WARNING" : "COMPLIANT",
-        score: Math.max(0, fdaScore),
-        violations: fdaViolations
-      },
-      {
-        region: "EU_EFSA",
-        regionName: "European Union (EU Reg 1223/2009)",
-        status: euViolations.some(v => v.severity === "CRITICAL") ? "NON_COMPLIANT" : euViolations.length ? "WARNING" : "COMPLIANT",
-        score: Math.max(0, euScore),
-        violations: euViolations
-      },
-      {
-        region: "IN_FSSAI",
-        regionName: "India (CDSCO Cosmetics)",
-        status: "COMPLIANT",
-        score: 100,
-        violations: []
-      }
+    const regions: { region: RegulatoryRegion; regionName: string }[] = [
+      { region: "US_FDA", regionName: "United States (FDA Cosmetics / MoCRA)" },
+      { region: "EU_EFSA", regionName: "European Union (EU Reg 1223/2009)" },
+      { region: "IN_FSSAI", regionName: "India (CDSCO Cosmetics Rules)" }
     ];
+
+    const cosmeticsRules = COMPLIANCE_RULES.filter(
+      r => r.productCategory === "Cosmetics"
+    );
+
+    return regions.map(({ region, regionName }) => {
+      const violations: ComplianceViolation[] = [];
+      let score = 100;
+
+      const applicableRules = cosmeticsRules.filter(r => r.region === region);
+      for (const rule of applicableRules) {
+        const matches = rule.keywords.some(kw => textJoined.includes(kw));
+        if (matches) {
+          violations.push({
+            ruleId: rule.id,
+            substance: rule.substance,
+            classification: rule.classification,
+            severity: rule.severity,
+            status: rule.status,
+            message: rule.message,
+            jurisdiction: rule.jurisdiction,
+            sourceRef: rule.sourceRef,
+            isDemoRule: rule.isDemoRule,
+            requiresHumanReview: rule.requiresHumanReview,
+            recommendedAction: rule.recommendedAction,
+            suggestedSubstitute: rule.suggestedSubstitute
+          });
+          score -= rule.scoreDeduction;
+        }
+      }
+
+      const hasCritical = violations.some(v => v.severity === "CRITICAL");
+      const hasReview = violations.some(v => v.requiresHumanReview);
+      const hasWarning = violations.some(v => v.severity === "WARNING" || v.severity === "MODERATE");
+
+      const status = hasCritical
+        ? "NON_COMPLIANT"
+        : hasReview
+        ? "NEEDS_REVIEW"
+        : hasWarning
+        ? "WARNING"
+        : "COMPLIANT";
+
+      const scoringRationale = violations.length === 0
+        ? "Compliant with illustrative cosmetics guidelines for this jurisdiction."
+        : `Score adjusted to reflect ${violations.length} restriction(s). Concentrated lab assays required for definitive legal classification.`;
+
+      return {
+        region,
+        regionName,
+        status,
+        score: Math.max(0, score),
+        scoringRationale,
+        violations
+      };
+    });
   }
 }

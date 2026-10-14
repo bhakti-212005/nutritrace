@@ -1,102 +1,74 @@
 import { ComplianceStrategy } from "./ComplianceStrategy";
-import { RegionalAuditReport, ComplianceViolation } from "../domain/compliance";
+import { RegionalAuditReport, ComplianceViolation, RegulatoryRegion } from "../domain/compliance";
+import { COMPLIANCE_RULES, DeclarativeComplianceRule } from "./complianceRules";
 
 export class FoodValidator implements ComplianceStrategy {
   readonly strategyName = "Food & Beverage Regulatory Validator";
 
   validate(ingredients: string[]): RegionalAuditReport[] {
     const lower = ingredients.map(i => i.toLowerCase().trim());
+    const textJoined = lower.join(" ");
 
-    // 1. US FDA Evaluation
-    const fdaViolations: ComplianceViolation[] = [];
-    let fdaScore = 100;
-
-    if (lower.some(i => i.includes("brominated vegetable oil") || i.includes("bvo"))) {
-      fdaViolations.push({
-        substance: "Brominated Vegetable Oil (BVO)",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "FDA revoked authorization in 2024 due to bioaccumulation."
-      });
-      fdaScore -= 60;
-    }
-    if (lower.some(i => i.includes("potassium bromate"))) {
-      fdaViolations.push({
-        substance: "Potassium Bromate",
-        severity: "MODERATE",
-        status: "RESTRICTED",
-        message: "Permitted under strict residue limits (<50 ppm) in flour."
-      });
-      fdaScore -= 15;
-    }
-
-    // 2. EU EFSA Evaluation
-    const euViolations: ComplianceViolation[] = [];
-    let euScore = 100;
-
-    if (lower.some(i => i.includes("titanium dioxide") || i.includes("e171"))) {
-      euViolations.push({
-        substance: "Titanium Dioxide (E171)",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "Strictly banned as food additive across EU under Reg (EU) 2022/63."
-      });
-      euScore -= 60;
-    }
-    if (lower.some(i => i.includes("potassium bromate") || i.includes("e924"))) {
-      euViolations.push({
-        substance: "Potassium Bromate (E924)",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "Classified carcinogen banned across Europe."
-      });
-      euScore -= 60;
-    }
-    if (lower.some(i => i.includes("red 40") || i.includes("allura red") || i.includes("e129"))) {
-      euViolations.push({
-        substance: "Red 40 (E129)",
-        severity: "WARNING",
-        status: "WARNING_REQUIRED",
-        message: "Mandatory EU warning: 'May have adverse effect on activity and attention in children'."
-      });
-      euScore -= 20;
-    }
-
-    // 3. India FSSAI Evaluation
-    const fssaiViolations: ComplianceViolation[] = [];
-    let fssaiScore = 100;
-    if (lower.some(i => i.includes("potassium bromate"))) {
-      fssaiViolations.push({
-        substance: "Potassium Bromate",
-        severity: "CRITICAL",
-        status: "BANNED",
-        message: "Prohibited by FSSAI since 2016."
-      });
-      fssaiScore -= 50;
-    }
-
-    return [
-      {
-        region: "US_FDA",
-        regionName: "United States (FDA 21 CFR)",
-        status: fdaViolations.some(v => v.severity === "CRITICAL") ? "NON_COMPLIANT" : fdaViolations.length ? "WARNING" : "COMPLIANT",
-        score: Math.max(0, fdaScore),
-        violations: fdaViolations
-      },
-      {
-        region: "EU_EFSA",
-        regionName: "European Union (EFSA Reg 1333/2008)",
-        status: euViolations.some(v => v.severity === "CRITICAL") ? "NON_COMPLIANT" : euViolations.length ? "WARNING" : "COMPLIANT",
-        score: Math.max(0, euScore),
-        violations: euViolations
-      },
-      {
-        region: "IN_FSSAI",
-        regionName: "India (FSSAI Regulations)",
-        status: fssaiViolations.some(v => v.severity === "CRITICAL") ? "NON_COMPLIANT" : fssaiViolations.length ? "WARNING" : "COMPLIANT",
-        score: Math.max(0, fssaiScore),
-        violations: fssaiViolations
-      }
+    const regions: { region: RegulatoryRegion; regionName: string }[] = [
+      { region: "US_FDA", regionName: "United States (FDA 21 CFR)" },
+      { region: "EU_EFSA", regionName: "European Union (EFSA Reg 1333/2008)" },
+      { region: "IN_FSSAI", regionName: "India (FSSAI Regulations)" }
     ];
+
+    const foodRules = COMPLIANCE_RULES.filter(
+      r => r.productCategory === "Food"
+    );
+
+    return regions.map(({ region, regionName }) => {
+      const violations: ComplianceViolation[] = [];
+      let score = 100;
+
+      const applicableRules = foodRules.filter(r => r.region === region);
+      for (const rule of applicableRules) {
+        const matches = rule.keywords.some(kw => textJoined.includes(kw));
+        if (matches) {
+          violations.push({
+            ruleId: rule.id,
+            substance: rule.substance,
+            classification: rule.classification,
+            severity: rule.severity,
+            status: rule.status,
+            message: rule.message,
+            jurisdiction: rule.jurisdiction,
+            sourceRef: rule.sourceRef,
+            isDemoRule: rule.isDemoRule,
+            requiresHumanReview: rule.requiresHumanReview,
+            recommendedAction: rule.recommendedAction,
+            suggestedSubstitute: rule.suggestedSubstitute
+          });
+          score -= rule.scoreDeduction;
+        }
+      }
+
+      const hasCritical = violations.some(v => v.severity === "CRITICAL");
+      const hasReview = violations.some(v => v.requiresHumanReview);
+      const hasWarning = violations.some(v => v.severity === "WARNING" || v.severity === "MODERATE");
+
+      const status = hasCritical
+        ? "NON_COMPLIANT"
+        : hasReview
+        ? "NEEDS_REVIEW"
+        : hasWarning
+        ? "WARNING"
+        : "COMPLIANT";
+
+      const scoringRationale = violations.length === 0
+        ? "All tested ingredients conform to configured illustrative regulatory thresholds."
+        : `Score deducted by ${100 - Math.max(0, score)} points due to ${violations.length} flagged rule condition(s). Demonstrative score only.`;
+
+      return {
+        region,
+        regionName,
+        status,
+        score: Math.max(0, score),
+        scoringRationale,
+        violations
+      };
+    });
   }
 }

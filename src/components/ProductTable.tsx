@@ -1,16 +1,26 @@
 import React, { useState } from "react";
 import { Product } from "../domain/product";
-import { Search, Eye, AlertTriangle } from "lucide-react";
+import { Search, Eye, Edit3, ShieldAlert, CheckCircle2, AlertTriangle } from "lucide-react";
 
 interface ProductTableProps {
   products: Product[];
   onSelectProduct: (product: Product) => void;
+  onEditProduct?: (product: Product) => void;
 }
 
-export const ProductTable: React.FC<ProductTableProps> = ({ products, onSelectProduct }) => {
+export const ProductTable: React.FC<ProductTableProps> = ({
+  products,
+  onSelectProduct,
+  onEditProduct
+}) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+
+  const totalCount = products.length;
+  const approvedCount = products.filter(p => p.status === "APPROVED").length;
+  const reviewCount = products.filter(p => p.status === "REVIEW_REQUIRED").length;
+  const holdCount = products.filter(p => p.status === "PROVISIONAL_HOLD" || p.status === "QUARANTINED").length;
 
   const filtered = products.filter(p => {
     const matchCat = categoryFilter === "All" || p.category === categoryFilter;
@@ -19,29 +29,77 @@ export const ProductTable: React.FC<ProductTableProps> = ({ products, onSelectPr
     const matchSearch = !searchTerm || 
       p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
+      p.batchNumber.toLowerCase().includes(q) ||
       p.ingredients.some(i => i.toLowerCase().includes(q));
 
     return matchCat && matchStat && matchSearch;
   });
 
+  const filterTabs = [
+    { id: "All", label: "All Formulations", count: totalCount },
+    { id: "APPROVED", label: "Approved", count: approvedCount, color: "#34d399" },
+    { id: "REVIEW_REQUIRED", label: "Review Required", count: reviewCount, color: "#fbbf24" },
+    { id: "PROVISIONAL_HOLD", label: "Safety Holds", count: holdCount, color: "#f43f5e" }
+  ];
+
   return (
-    <div>
-      <div style={{ display: "flex", gap: "14px", marginBottom: "20px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      {/* 1-Click Quick Filter Pills */}
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+        {filterTabs.map(tab => {
+          const isActive = statusFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id)}
+              style={{
+                background: isActive ? "rgba(99, 102, 241, 0.15)" : "rgba(17, 24, 39, 0.7)",
+                border: `1px solid ${isActive ? "rgba(99, 102, 241, 0.35)" : "rgba(255, 255, 255, 0.07)"}`,
+                color: isActive ? "#c7d2fe" : "#94a3b8",
+                padding: "6px 12px",
+                borderRadius: "20px",
+                fontSize: "12px",
+                fontWeight: isActive ? 600 : 500,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 150ms ease"
+              }}
+            >
+              <span>{tab.label}</span>
+              <span style={{
+                fontSize: "10.5px",
+                fontWeight: 700,
+                padding: "1px 6px",
+                borderRadius: "9999px",
+                background: isActive ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.05)",
+                color: tab.color || (isActive ? "#fff" : "#64748b")
+              }}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search & Category Filter */}
+      <div style={{ display: "flex", gap: "10px" }}>
         <div style={{ position: "relative", flex: 1 }}>
-          <Search size={16} style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
+          <Search size={15} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#64748b" }} />
           <input
             type="text"
-            placeholder="Search by SKU, Product Name, or Ingredient (e.g. Red 40, Almond)..."
+            placeholder="Search by SKU, Product Name, Batch #, or Ingredient..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{
               width: "100%",
-              padding: "10px 14px 10px 40px",
-              background: "rgba(18, 25, 43, 0.75)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "10px",
+              padding: "8px 12px 8px 36px",
+              background: "#111827",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: "8px",
               color: "#f8fafc",
-              fontSize: "13.5px",
+              fontSize: "13px",
               outline: "none"
             }}
           />
@@ -51,12 +109,12 @@ export const ProductTable: React.FC<ProductTableProps> = ({ products, onSelectPr
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           style={{
-            padding: "10px 14px",
-            background: "rgba(18, 25, 43, 0.75)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: "10px",
+            padding: "8px 12px",
+            background: "#111827",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: "8px",
             color: "#f8fafc",
-            fontSize: "13.5px",
+            fontSize: "13px",
             outline: "none"
           }}
         >
@@ -66,130 +124,134 @@ export const ProductTable: React.FC<ProductTableProps> = ({ products, onSelectPr
           <option value="Cosmetics">Cosmetics</option>
           <option value="Supplement">Supplement</option>
         </select>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{
-            padding: "10px 14px",
-            background: "rgba(18, 25, 43, 0.75)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: "10px",
-            color: "#f8fafc",
-            fontSize: "13.5px",
-            outline: "none"
-          }}
-        >
-          <option value="All">All Statuses</option>
-          <option value="APPROVED">Approved</option>
-          <option value="REVIEW_REQUIRED">Review Required</option>
-          <option value="QUARANTINED">Quarantined</option>
-        </select>
       </div>
 
+      {/* Table */}
       <div style={{
-        background: "rgba(18, 25, 43, 0.75)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: "14px",
+        background: "#111827",
+        border: "1px solid rgba(255, 255, 255, 0.07)",
+        borderRadius: "10px",
         overflowX: "auto"
       }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13.5px" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
           <thead>
-            <tr style={{ background: "rgba(0,0,0,0.3)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>SKU</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>Product Name</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>Category</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>Batch #</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>Identified Allergens</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600 }}>Status</th>
-              <th style={{ padding: "14px 18px", color: "#94a3b8", fontWeight: 600, textAlign: "right" }}>Action</th>
+            <tr style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid rgba(255, 255, 255, 0.07)" }}>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>SKU</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>PRODUCT NAME</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>CATEGORY</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>BATCH #</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>ALLERGENS</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px" }}>COMPLIANCE STATUS</th>
+              <th style={{ padding: "10px 14px", color: "#64748b", fontWeight: 600, fontSize: "11.5px", textAlign: "right" }}>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ padding: "30px", textAlign: "center", color: "#64748b" }}>
-                  No matching formulations found in PIM master records.
+                <td colSpan={7} style={{ padding: "32px", textAlign: "center", color: "#64748b" }}>
+                  No matching formulations found in catalog.
                 </td>
               </tr>
             ) : (
               filtered.map(p => {
-                let badgeStyle = { bg: "rgba(16,185,129,0.15)", text: "#34d399", border: "rgba(16,185,129,0.3)" };
+                let badgeStyle = { bg: "rgba(16,185,129,0.12)", text: "#34d399", border: "rgba(16,185,129,0.25)", label: "APPROVED" };
                 if (p.status === "REVIEW_REQUIRED") {
-                  badgeStyle = { bg: "rgba(245,158,11,0.15)", text: "#fbbf24", border: "rgba(245,158,11,0.3)" };
+                  badgeStyle = { bg: "rgba(245,158,11,0.12)", text: "#fbbf24", border: "rgba(245,158,11,0.25)", label: "REVIEW REQUIRED" };
+                } else if (p.status === "PROVISIONAL_HOLD") {
+                  badgeStyle = { bg: "rgba(244,63,94,0.15)", text: "#f43f5e", border: "rgba(244,63,94,0.3)", label: "PROVISIONAL HOLD" };
                 } else if (p.status === "QUARANTINED") {
-                  badgeStyle = { bg: "rgba(244,63,94,0.2)", text: "#f43f5e", border: "rgba(244,63,94,0.4)" };
+                  badgeStyle = { bg: "rgba(244,63,94,0.2)", text: "#f43f5e", border: "rgba(244,63,94,0.4)", label: "QUARANTINED" };
                 }
 
                 return (
-                  <tr
-                    key={p.id}
-                    style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", cursor: "pointer" }}
-                    onClick={() => onSelectProduct(p)}
-                  >
-                    <td style={{ padding: "14px 18px", fontFamily: "JetBrains Mono, monospace", fontSize: "11.5px", color: "#818cf8" }}>
+                  <tr key={p.id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.04)" }}>
+                    <td style={{ padding: "11px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: "11px", color: "#818cf8" }}>
                       {p.sku}
                     </td>
-                    <td style={{ padding: "14px 18px", fontWeight: 600, color: "#f8fafc" }}>
-                      {p.name}
-                      <span style={{ display: "block", fontSize: "11px", color: "#64748b" }}>{p.brand}</span>
+                    <td style={{ padding: "11px 14px" }}>
+                      <span style={{ fontWeight: 600, color: "#f8fafc", display: "block" }}>{p.name}</span>
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>{p.brand}</span>
                     </td>
-                    <td style={{ padding: "14px 18px", color: "#cbd5e1" }}>{p.category}</td>
-                    <td style={{ padding: "14px 18px", fontFamily: "JetBrains Mono, monospace", fontSize: "12px", color: "#cbd5e1" }}>
+                    <td style={{ padding: "11px 14px", color: "#cbd5e1" }}>{p.category}</td>
+                    <td style={{ padding: "11px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: "11.5px", color: "#94a3b8" }}>
                       {p.batchNumber}
                     </td>
-                    <td style={{ padding: "14px 18px" }}>
-                      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    <td style={{ padding: "11px 14px" }}>
+                      <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
                         {p.allergens.length > 0 ? (
                           p.allergens.map(a => (
                             <span key={a.id} style={{
-                              fontSize: "11px",
-                              background: "rgba(255,255,255,0.06)",
-                              border: "1px solid rgba(255,255,255,0.1)",
-                              padding: "2px 8px",
-                              borderRadius: "6px",
-                              color: "#e2e8f0"
+                              fontSize: "10.5px",
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              color: "#cbd5e1"
                             }}>
-                              {a.icon} {a.name}
+                              {a.name}
                             </span>
                           ))
                         ) : (
-                          <span style={{ fontSize: "11px", color: "#64748b" }}>None</span>
+                          <span style={{ fontSize: "11px", color: "#475569" }}>None</span>
                         )}
                       </div>
                     </td>
-                    <td style={{ padding: "14px 18px" }}>
+                    <td style={{ padding: "11px 14px" }}>
                       <span style={{
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        padding: "3px 8px",
+                        fontSize: "10px",
+                        fontWeight: 600,
+                        padding: "2px 7px",
                         borderRadius: "9999px",
                         background: badgeStyle.bg,
                         color: badgeStyle.text,
                         border: `1px solid ${badgeStyle.border}`,
-                        textTransform: "uppercase"
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px"
                       }}>
-                        {p.status.replace("_", " ")}
+                        {p.status === "PROVISIONAL_HOLD" && <ShieldAlert size={10} />}
+                        {badgeStyle.label}
                       </span>
                     </td>
-                    <td style={{ padding: "14px 18px", textAlign: "right" }}>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onSelectProduct(p); }}
-                        style={{
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          color: "#94a3b8",
-                          padding: "6px 10px",
-                          borderRadius: "8px",
-                          cursor: "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          fontSize: "12px"
-                        }}
-                      >
-                        <Eye size={13} /> View Spec
-                      </button>
+                    <td style={{ padding: "11px 14px", textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", gap: "6px" }}>
+                        {onEditProduct && (
+                          <button
+                            onClick={() => onEditProduct(p)}
+                            style={{
+                              background: "transparent",
+                              border: "1px solid rgba(255,255,255,0.1)",
+                              color: "#cbd5e1",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              fontSize: "11.5px"
+                            }}
+                          >
+                            <Edit3 size={12} /> Edit
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onSelectProduct(p)}
+                          style={{
+                            background: "rgba(99, 102, 241, 0.1)",
+                            border: "1px solid rgba(99, 102, 241, 0.2)",
+                            color: "#c7d2fe",
+                            padding: "4px 9px",
+                            borderRadius: "6px",
+                            cursor: "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            fontSize: "11.5px"
+                          }}
+                        >
+                          <Eye size={12} /> Spec
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
