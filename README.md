@@ -10,6 +10,12 @@
 
 ---
 
+## 🎥 Video Presentation & Demonstration
+- **Planning Video (2 Minutes):** `[Link to Planning Video]`
+- **Demo & Results Video (2 Minutes):** `[Link to Demo Video]`
+
+---
+
 ## 📌 Executive Summary
 **NutriTrace** is a **Product Information Management (PIM)** platform built for Food, Beverage, and Cosmetics enterprises. It serves as the single source of truth for product master formulations, cross-market regulatory auditing, Big 9 / EU 14 allergen classification, safety incident triage, and persistent compliance audit trails.
 
